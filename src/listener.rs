@@ -29,12 +29,21 @@ use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use parking_lot::RwLock;
 use std::any::Any;
+use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, instrument, trace, warn};
+
+/// How long to wait between bind retries when the address is reported as
+/// in use. Tuned for the typical TIME_WAIT / dev-loop hand-off window —
+/// long enough to outlast a parent `cargo tauri dev` rebuild but short
+/// enough that a real port conflict surfaces in well under two seconds.
+const BIND_RETRY_DELAY: Duration = Duration::from_millis(250);
+const BIND_RETRY_ATTEMPTS: usize = 6;
 
 /// HTTP listener for CS2 GSI payloads.
 ///
@@ -130,12 +139,10 @@ impl GameStateListener {
             return Err(Error::AlreadyStarted);
         }
 
-        let tcp = TcpListener::bind(self.addr)
-            .await
-            .map_err(|e| Error::Bind {
-                addr: self.addr.to_string(),
-                source: e,
-            })?;
+        let tcp = bind_with_retry(self.addr).await.map_err(|e| Error::Bind {
+            addr: self.addr.to_string(),
+            source: e,
+        })?;
         let bound = tcp.local_addr()?;
 
         let dispatcher = self.dispatcher.clone();
@@ -172,6 +179,35 @@ impl GameStateListener {
         self.runtime.write().bound_addr = None;
         Ok(())
     }
+}
+
+/// Bind to `addr`, retrying briefly on `AddrInUse`.
+///
+/// Targets the *real* failure mode in dev: when a watcher (cargo tauri
+/// dev, cargo-watch, …) restarts the process, the previous binary's
+/// socket is usually still in TIME_WAIT for a fraction of a second and
+/// the new bind would otherwise return `WSAEADDRINUSE` (Windows) /
+/// `EADDRINUSE` (Linux/macOS). Retries are bounded — a genuine port
+/// conflict still surfaces in ~1.5s with the original error.
+async fn bind_with_retry(addr: SocketAddr) -> io::Result<TcpListener> {
+    let mut last_err: Option<io::Error> = None;
+    for attempt in 0..BIND_RETRY_ATTEMPTS {
+        match TcpListener::bind(addr).await {
+            Ok(tcp) => return Ok(tcp),
+            Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
+                debug!(
+                    "bind {addr} returned AddrInUse (attempt {}/{}), retrying in {:?}",
+                    attempt + 1,
+                    BIND_RETRY_ATTEMPTS,
+                    BIND_RETRY_DELAY
+                );
+                last_err = Some(e);
+                tokio::time::sleep(BIND_RETRY_DELAY).await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| io::Error::other("bind retry exhausted")))
 }
 
 #[instrument(level = "debug", skip_all, fields(addr = %tcp.local_addr().map(|a| a.to_string()).unwrap_or_default()))]
@@ -320,5 +356,54 @@ mod tests {
         let resp = reqwest::Client::new().get(&url).send().await.unwrap();
         assert_eq!(resp.status().as_u16(), 405);
         listener.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn bind_retry_succeeds_when_squatter_releases() {
+        // Pin a port by binding briefly, releasing it, and pinning the
+        // *same* port — emulating the dev-restart TIME_WAIT window.
+        let probe = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+            .await
+            .unwrap();
+        let addr = probe.local_addr().unwrap();
+
+        // Start a task that holds the port for ~150ms then drops it,
+        // well within the retry budget (6 × 250ms = 1.5s).
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            drop(probe);
+        });
+
+        let listener = GameStateListener::with_addr(addr);
+        // Without retry, this would race and frequently fail; with
+        // retry, the squatter releases on attempt 1 or 2 and the bind
+        // succeeds.
+        listener.start().await.expect("retry should win the race");
+        listener.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn bind_retry_eventually_surfaces_real_conflict() {
+        // A held port that *never* releases must surface as Bind error
+        // within the retry budget — not hang forever.
+        let squatter = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+            .await
+            .unwrap();
+        let addr = squatter.local_addr().unwrap();
+
+        let listener = GameStateListener::with_addr(addr);
+        let start = std::time::Instant::now();
+        let err = listener.start().await.expect_err("must fail");
+        let elapsed = start.elapsed();
+        // Total budget is 6 × 250ms = 1.5s; allow some slack.
+        assert!(
+            elapsed < Duration::from_secs(3),
+            "bind retry should bound failure latency, took {elapsed:?}"
+        );
+        match err {
+            Error::Bind { .. } => {}
+            other => panic!("expected Bind error, got {other:?}"),
+        }
+        drop(squatter);
     }
 }
