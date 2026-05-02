@@ -1,6 +1,6 @@
 [package]
 name = "cs2-gsi"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.86"
 authors = ["ccc007ccc"]
@@ -49,10 +49,12 @@ pretty_assertions = "1"
 [[example]]
 name = "quickstart"
 path = "examples/quickstart.rs"
+required-features = ["cfg-writer", "steam-discover"]
 
 [[example]]
 name = "full_dump"
 path = "examples/full_dump.rs"
+required-features = ["cfg-writer", "steam-discover"]
 
 [package.metadata.docs.rs]
 all-features = true

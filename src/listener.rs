@@ -21,7 +21,7 @@ use crate::handlers::diff_and_dispatch;
 use crate::model::GameState;
 
 use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
+use http_body_util::{BodyExt, Full, Limited};
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
@@ -45,6 +45,12 @@ use tracing::{debug, error, instrument, trace, warn};
 /// the caller can fall back to an alternative.
 const BIND_RETRY_DELAY: Duration = Duration::from_millis(250);
 const BIND_RETRY_ATTEMPTS: usize = 3;
+
+/// Hard cap on POST body size, in bytes. Real GSI payloads are well under
+/// 100 KB even at full data-section coverage; 1 MiB is a generous ceiling
+/// that prevents a misbehaving (or malicious) local sender from feeding
+/// the listener arbitrary memory.
+const MAX_BODY_BYTES: usize = 1024 * 1024;
 
 /// HTTP listener for CS2 GSI payloads.
 ///
@@ -235,7 +241,9 @@ impl GameStateListener {
 /// socket is usually still in TIME_WAIT for a fraction of a second and
 /// the new bind would otherwise return `WSAEADDRINUSE` (Windows) /
 /// `EADDRINUSE` (Linux/macOS). Retries are bounded — a genuine port
-/// conflict still surfaces in ~1.5s with the original error.
+/// conflict surfaces in roughly
+/// `BIND_RETRY_ATTEMPTS * BIND_RETRY_DELAY` (≈ 750 ms with the current
+/// 3 × 250 ms tuning) with the original error.
 async fn bind_with_retry(addr: SocketAddr) -> io::Result<TcpListener> {
     let mut last_err: Option<io::Error> = None;
     for attempt in 0..BIND_RETRY_ATTEMPTS {
@@ -249,7 +257,11 @@ async fn bind_with_retry(addr: SocketAddr) -> io::Result<TcpListener> {
                     BIND_RETRY_DELAY
                 );
                 last_err = Some(e);
-                tokio::time::sleep(BIND_RETRY_DELAY).await;
+                // Skip the trailing sleep on the last attempt — the caller
+                // can immediately fall back to the next candidate address.
+                if attempt + 1 < BIND_RETRY_ATTEMPTS {
+                    tokio::time::sleep(BIND_RETRY_DELAY).await;
+                }
             }
             Err(e) => return Err(e),
         }
@@ -315,11 +327,20 @@ async fn handle_request(
         ));
     }
 
-    let body = match req.into_body().collect().await {
+    let body = match Limited::new(req.into_body(), MAX_BODY_BYTES)
+        .collect()
+        .await
+    {
         Ok(c) => c.to_bytes(),
         Err(e) => {
-            warn!("body collect error: {e}");
-            return Ok(reply(StatusCode::BAD_REQUEST, "could not read body"));
+            // `Limited` returns a boxed error on overflow; we cannot tell it
+            // apart from a transport read error without downcasting, so
+            // surface 413 with the underlying detail in logs.
+            warn!("body collect failed (cap {MAX_BODY_BYTES} bytes): {e}");
+            return Ok(reply(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "payload too large or read error",
+            ));
         }
     };
 

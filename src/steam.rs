@@ -186,47 +186,65 @@ mod win {
                 return None;
             }
         }
-        // First pass — discover required size.
-        let mut ty = REG_VALUE_TYPE::default();
-        let mut len: u32 = 0;
-        let status = unsafe {
-            RegQueryValueExW(
-                key,
-                PCWSTR(name_w.as_ptr()),
-                None,
-                Some(&mut ty),
-                None,
-                Some(&mut len),
-            )
-        };
-        if status != ERROR_SUCCESS {
-            unsafe {
-                let _ = RegCloseKey(key);
-            }
-            return None;
-        }
-        let mut buf = vec![0u8; len as usize];
-        let status = unsafe {
-            RegQueryValueExW(
-                key,
-                PCWSTR(name_w.as_ptr()),
-                None,
-                Some(&mut ty),
-                Some(buf.as_mut_ptr()),
-                Some(&mut len),
-            )
-        };
-        unsafe {
+        // RAII guard so a panic between Open and Close cannot leak the HKEY.
+        let _key_guard = scopeguard(|| unsafe {
             let _ = RegCloseKey(key);
-        }
+        });
+
+        // First pass — discover required byte length.
+        let mut ty = REG_VALUE_TYPE::default();
+        let mut byte_len: u32 = 0;
+        let status = unsafe {
+            RegQueryValueExW(
+                key,
+                PCWSTR(name_w.as_ptr()),
+                None,
+                Some(&mut ty),
+                None,
+                Some(&mut byte_len),
+            )
+        };
         if status != ERROR_SUCCESS {
             return None;
         }
-        // Reinterpret as wide chars.
-        let wlen = (len as usize) / 2;
-        let words: &[u16] = unsafe { std::slice::from_raw_parts(buf.as_ptr().cast::<u16>(), wlen) };
+
+        // REG_SZ values are wide-char strings. Allocate as `Vec<u16>` so the
+        // buffer is naturally 2-byte aligned — reading it back as a `&[u16]`
+        // would otherwise be UB (`Vec<u8>` is only `align_of::<u8>() == 1`).
+        let cap_words = (byte_len as usize).div_ceil(2);
+        let mut buf: Vec<u16> = vec![0; cap_words];
+        // RegQueryValueExW takes byte length in/out.
+        let mut byte_len_io = (cap_words * 2) as u32;
+        let status = unsafe {
+            RegQueryValueExW(
+                key,
+                PCWSTR(name_w.as_ptr()),
+                None,
+                Some(&mut ty),
+                Some(buf.as_mut_ptr().cast::<u8>()),
+                Some(&mut byte_len_io),
+            )
+        };
+        if status != ERROR_SUCCESS {
+            return None;
+        }
+        let wlen = ((byte_len_io as usize) / 2).min(buf.len());
+        let words = &buf[..wlen];
         let trimmed = words.split(|c| *c == 0).next().unwrap_or(words);
         Some(String::from_utf16_lossy(trimmed))
+    }
+
+    /// Tiny, dependency-free RAII scope guard — calls the closure on drop.
+    fn scopeguard<F: FnOnce()>(f: F) -> impl Drop {
+        struct G<F: FnOnce()>(Option<F>);
+        impl<F: FnOnce()> Drop for G<F> {
+            fn drop(&mut self) {
+                if let Some(f) = self.0.take() {
+                    f();
+                }
+            }
+        }
+        G(Some(f))
     }
 
     fn wide(s: &str) -> Vec<u16> {

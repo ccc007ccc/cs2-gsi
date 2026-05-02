@@ -3,6 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/cs2-gsi.svg)](https://crates.io/crates/cs2-gsi)
 [![docs.rs](https://docs.rs/cs2-gsi/badge.svg)](https://docs.rs/cs2-gsi)
 [![CI](https://github.com/ccc007ccc/cs2-gsi/actions/workflows/ci.yml/badge.svg)](https://github.com/ccc007ccc/cs2-gsi/actions)
+[![MSRV](https://img.shields.io/badge/MSRV-1.86-orange.svg)](https://blog.rust-lang.org/)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
 **English** · [简体中文](README.zh-CN.md)
