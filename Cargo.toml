@@ -1,0 +1,59 @@
+[package]
+name = "cs2-gsi"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+authors = ["ccc007ccc"]
+license = "MIT OR Apache-2.0"
+description = "Counter-Strike 2 Game State Integration listener — receive game state pushes, emit typed events"
+documentation = "https://docs.rs/cs2-gsi"
+repository = "https://github.com/ccc007ccc/cs2-gsi"
+homepage = "https://github.com/ccc007ccc/cs2-gsi"
+readme = "README.md"
+keywords = ["cs2", "gsi", "counter-strike", "game-state", "esports"]
+categories = ["api-bindings", "games", "network-programming", "asynchronous"]
+exclude = ["fixtures/large_dump_*.json"]
+
+[features]
+default = ["cfg-writer", "steam-discover"]
+# Auto-generate gamestate_integration_*.cfg files into the CS2 cfg directory.
+cfg-writer = []
+# Locate the Counter-Strike 2 install directory via Steam library metadata.
+steam-discover = []
+
+[dependencies]
+tokio = { version = "1.41", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
+hyper = { version = "1.5", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+parking_lot = "0.12"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_System_Registry",
+    "Win32_Foundation",
+    "Win32_System_SystemInformation",
+] }
+
+[dev-dependencies]
+tokio = { version = "1.41", features = ["full"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+pretty_assertions = "1"
+
+[[example]]
+name = "quickstart"
+path = "examples/quickstart.rs"
+
+[[example]]
+name = "full_dump"
+path = "examples/full_dump.rs"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

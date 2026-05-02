@@ -1,0 +1,90 @@
+{
+  "provider": {
+    "name": "Counter-Strike 2",
+    "appid": "730",
+    "version": "14000",
+    "steamid": "76561198000000001",
+    "timestamp": "1700000000"
+  },
+  "map": {
+    "mode": "competitive",
+    "name": "de_dust2",
+    "phase": "live",
+    "round": "5",
+    "team_ct": {
+      "score": "3",
+      "consecutive_round_losses": "0",
+      "timeouts_remaining": "4",
+      "matches_won_this_series": "0"
+    },
+    "team_t": {
+      "score": "1",
+      "consecutive_round_losses": "1",
+      "timeouts_remaining": "4",
+      "matches_won_this_series": "0"
+    },
+    "num_matches_to_win_series": "0",
+    "current_spectators": "0",
+    "souvenirs_total": "0",
+    "round_wins": {
+      "1": "ct_win_elimination",
+      "2": "t_win_elimination",
+      "3": "ct_win_elimination",
+      "4": "ct_win_defuse"
+    }
+  },
+  "round": {
+    "phase": "live",
+    "win_team": "",
+    "bomb": ""
+  },
+  "player": {
+    "steamid": "76561198000000001",
+    "name": "alice",
+    "clan": "",
+    "observer_slot": 0,
+    "team": "CT",
+    "activity": "playing",
+    "state": {
+      "health": "100",
+      "armor": "100",
+      "helmet": true,
+      "defusekit": true,
+      "flashed": "0",
+      "smoked": "0",
+      "burning": "0",
+      "money": "3500",
+      "round_kills": "0",
+      "round_killhs": "0",
+      "round_totaldmg": "0",
+      "equip_value": "5000"
+    },
+    "match_stats": {
+      "kills": "5",
+      "assists": "1",
+      "deaths": "2",
+      "mvps": "1",
+      "score": "16"
+    },
+    "weapons": {
+      "weapon_0": {
+        "name": "weapon_knife",
+        "type": "Knife",
+        "state": "holstered"
+      },
+      "weapon_1": {
+        "name": "weapon_glock",
+        "paintkit": "default",
+        "type": "Pistol",
+        "ammo_clip": "20",
+        "ammo_clip_max": "20",
+        "ammo_reserve": "120",
+        "state": "active"
+      }
+    }
+  },
+  "phase_countdowns": {
+    "phase": "live",
+    "phase_ends_in": "78.0"
+  }
+}
