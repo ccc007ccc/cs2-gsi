@@ -2,7 +2,7 @@
 name = "cs2-gsi"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.86"
 authors = ["ccc007ccc"]
 license = "MIT OR Apache-2.0"
 description = "Counter-Strike 2 Game State Integration listener — receive game state pushes, emit typed events"
