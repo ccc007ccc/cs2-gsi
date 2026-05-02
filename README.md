@@ -208,8 +208,9 @@ cargo run --example full_dump    # every event, debug-printed
 
 ## MSRV & platforms
 
-- **Rust 1.82** or newer (the dev-dependency `reqwest 0.12` indirectly pulls
-  in `idna_adapter`, which requires Rust 2024 edition support).
+- **Rust 1.85** or newer. The dev-dependency `reqwest 0.12` indirectly
+  pulls in `idna_adapter`, whose latest version requires the Rust 2024
+  edition — stabilised in Rust 1.85 (Feb 2025).
 - Tested on Windows 10/11 (primary target — that's where CS2 lives).
   Linux & macOS are supported for the listener / parser / Steam discovery,
   using `~/.steam/steam` and `~/Library/Application Support/Steam`

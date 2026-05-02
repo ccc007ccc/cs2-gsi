@@ -186,8 +186,8 @@ cargo run --example full_dump    # 把每一个事件 debug-print 出来
 
 ## MSRV 与平台
 
-- **Rust 1.82** 或以上（dev-dependency `reqwest 0.12` 间接依赖 `idna_adapter`，
-  其要求 Rust 2024 edition 支持）。
+- **Rust 1.85** 或以上。dev-dependency `reqwest 0.12` 间接依赖 `idna_adapter`，
+  其最新版要求 Rust 2024 edition —— 该 edition 在 Rust 1.85（2025 年 2 月）才稳定。
 - 主要在 Windows 10/11 上测试（CS2 的主要运行平台）。Linux 与 macOS 在监听器 / 解析器 / Steam 发现层面都支持，分别使用 `~/.steam/steam` 和 `~/Library/Application Support/Steam`。
 
 ---
