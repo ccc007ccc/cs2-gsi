@@ -187,9 +187,9 @@ Output (snipped):
     "heartbeat"    "10.0"
     "data"
     {
-        "allgrenades              "        "1"
-        "allplayers_id            "        "1"
-        "allplayers_match_stats   "        "1"
+        "allgrenades"             "1"
+        "allplayers_id"           "1"
+        "allplayers_match_stats"  "1"
         ...
     }
 }

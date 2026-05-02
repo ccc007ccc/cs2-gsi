@@ -94,7 +94,13 @@ impl GsiCfg {
         let _ = writeln!(out, "    \"data\"");
         let _ = writeln!(out, "    {{");
         for (k, v) in &self.data {
-            let _ = writeln!(out, "        \"{k:<24}\"        \"{v}\"");
+            // Pad the *quoted* key (not the key itself) so CS2's KeyValues
+            // parser sees the bare key name. Putting padding inside the
+            // quotes turned the key into `"allgrenades             "`,
+            // which CS2 silently ignored — and dropped the whole data
+            // block with it.
+            let quoted = format!("\"{k}\"");
+            let _ = writeln!(out, "        {quoted:<26}        \"{v}\"");
         }
         let _ = writeln!(out, "    }}");
         let _ = writeln!(out, "}}");
@@ -178,6 +184,49 @@ mod tests {
         assert!(rendered.contains("\"heartbeat\"    \"10.0\""));
         // 18 default data keys.
         assert_eq!(rendered.matches("\"1\"").count(), 18);
+    }
+
+    #[test]
+    fn data_keys_have_no_trailing_whitespace_inside_quotes() {
+        // CS2's KeyValues parser is intolerant of stray whitespace inside
+        // quoted keys — silently ignoring the whole `data` block. This test
+        // pins the fix for that regression: padding must sit *outside* the
+        // closing quote.
+        let cfg = GsiCfg::for_localhost("Demo", 4000);
+        let rendered = cfg.render();
+        for key in [
+            "provider",
+            "map",
+            "round",
+            "bomb",
+            "allgrenades",
+            "allplayers_id",
+            "allplayers_match_stats",
+            "allplayers_position",
+            "allplayers_state",
+            "allplayers_weapons",
+            "map_round_wins",
+            "phase_countdowns",
+            "player_id",
+            "player_match_stats",
+            "player_position",
+            "player_state",
+            "player_weapons",
+            "tournamentdraft",
+        ] {
+            // The exact token `"<key>"` (closing quote immediately after
+            // the name, no spaces) must appear in the output.
+            assert!(
+                rendered.contains(&format!("\"{key}\"")),
+                "expected exact `\"{key}\"` token in rendered cfg",
+            );
+            // And the buggy variant `"<key>   "` (any space-then-quote
+            // sequence) must NOT appear anywhere in the file.
+            assert!(
+                !rendered.contains(&format!("{key} ")) || !rendered.contains(&format!("{key}\"")),
+                "found a quoted key with internal trailing whitespace",
+            );
+        }
     }
 
     #[test]
