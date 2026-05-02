@@ -41,9 +41,10 @@ use tracing::{debug, error, instrument, trace, warn};
 /// How long to wait between bind retries when the address is reported as
 /// in use. Tuned for the typical TIME_WAIT / dev-loop hand-off window —
 /// long enough to outlast a parent `cargo tauri dev` rebuild but short
-/// enough that a real port conflict surfaces in well under two seconds.
+/// enough that a real port conflict surfaces in well under a second so
+/// the caller can fall back to an alternative.
 const BIND_RETRY_DELAY: Duration = Duration::from_millis(250);
-const BIND_RETRY_ATTEMPTS: usize = 6;
+const BIND_RETRY_ATTEMPTS: usize = 3;
 
 /// HTTP listener for CS2 GSI payloads.
 ///
@@ -135,14 +136,60 @@ impl GameStateListener {
     /// task. Call [`stop`](Self::stop) to shut it down.
     #[instrument(level = "debug", skip(self), fields(addr = %self.addr))]
     pub async fn start(&self) -> Result<()> {
+        self.start_with_fallbacks::<std::iter::Empty<SocketAddr>>(std::iter::empty())
+            .await
+    }
+
+    /// Bind, falling back to alternative addresses if the primary is busy.
+    ///
+    /// Tries `self.addr` first. If that address is reported as in use
+    /// (after the per-address retry budget is exhausted), each fallback
+    /// is tried in turn. The first address that binds wins; the actual
+    /// chosen address is then available via
+    /// [`actual_addr`](Self::actual_addr).
+    ///
+    /// Pass `port = 0` as a final fallback to ask the OS to pick any
+    /// free ephemeral port — that bind effectively cannot fail.
+    ///
+    /// All non-`AddrInUse` errors short-circuit immediately (no point
+    /// trying fallbacks if e.g. the loopback interface is gone).
+    #[instrument(level = "debug", skip(self, fallbacks), fields(primary = %self.addr))]
+    pub async fn start_with_fallbacks<I>(&self, fallbacks: I) -> Result<()>
+    where
+        I: IntoIterator<Item = SocketAddr>,
+    {
         if self.is_running() {
             return Err(Error::AlreadyStarted);
         }
 
-        let tcp = bind_with_retry(self.addr).await.map_err(|e| Error::Bind {
-            addr: self.addr.to_string(),
-            source: e,
-        })?;
+        let addrs: Vec<SocketAddr> = std::iter::once(self.addr).chain(fallbacks).collect();
+        let mut last_err: Option<(SocketAddr, io::Error)> = None;
+        let tcp = 'outer: {
+            for addr in &addrs {
+                match bind_with_retry(*addr).await {
+                    Ok(t) => break 'outer t,
+                    Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
+                        debug!("address {addr} busy after retries, trying next fallback");
+                        last_err = Some((*addr, e));
+                    }
+                    Err(e) => {
+                        return Err(Error::Bind {
+                            addr: addr.to_string(),
+                            source: e,
+                        });
+                    }
+                }
+            }
+            // Every candidate was AddrInUse — surface the *last* one's
+            // error against the *primary* address (it's the one the
+            // caller actually asked for).
+            let (_busy_addr, source) =
+                last_err.unwrap_or_else(|| (self.addr, io::Error::other("no addresses to try")));
+            return Err(Error::Bind {
+                addr: self.addr.to_string(),
+                source,
+            });
+        };
         let bound = tcp.local_addr()?;
 
         let dispatcher = self.dispatcher.clone();
@@ -405,5 +452,35 @@ mod tests {
             other => panic!("expected Bind error, got {other:?}"),
         }
         drop(squatter);
+    }
+
+    #[tokio::test]
+    async fn start_with_fallbacks_picks_first_free_port() {
+        // Pin two adjacent ports as the "preferred" + "first fallback".
+        // The listener should walk past both and land on the second
+        // fallback (port 0 → OS-assigned), which always succeeds.
+        let primary_squatter = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+            .await
+            .unwrap();
+        let primary_addr = primary_squatter.local_addr().unwrap();
+        let fallback1_squatter = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+            .await
+            .unwrap();
+        let fallback1_addr = fallback1_squatter.local_addr().unwrap();
+
+        let listener = GameStateListener::with_addr(primary_addr);
+        listener
+            .start_with_fallbacks([fallback1_addr, SocketAddr::from(([127, 0, 0, 1], 0))])
+            .await
+            .expect("port 0 fallback should bind");
+
+        let bound = listener.actual_addr().unwrap();
+        assert_ne!(bound, primary_addr, "should not have used busy primary");
+        assert_ne!(bound, fallback1_addr, "should not have used busy fallback");
+        assert_ne!(bound.port(), 0, "OS must have assigned a real port");
+
+        listener.stop().await.unwrap();
+        drop(primary_squatter);
+        drop(fallback1_squatter);
     }
 }
