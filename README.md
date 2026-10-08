@@ -209,11 +209,10 @@ cargo run --example full_dump    # every event, debug-printed
 
 ## MSRV & platforms
 
-- **Rust 1.86** or newer. The dev-dependency `reqwest 0.12` indirectly
-  pulls in `idna_adapter` and the `icu_*` crates, whose latest versions
-  require Rust 1.86. The library itself only needs basic 2021-edition
-  features; `cargo build` (without dev-deps) on older toolchains still
-  works.
+- **Rust 1.86** or newer. The test-only `reqwest 0.12` dependency pulls in
+  `idna_adapter` and the `icu_*` crates. Cargo's MSRV-aware resolver setting
+  keeps dependency versions compatible with the declared Rust version as
+  upstream crates raise their MSRV.
 - Tested on Windows 10/11 (primary target — that's where CS2 lives).
   Linux & macOS are supported for the listener / parser / Steam discovery,
   using `~/.steam/steam` and `~/Library/Application Support/Steam`

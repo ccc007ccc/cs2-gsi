@@ -187,9 +187,9 @@ cargo run --example full_dump    # 把每一个事件 debug-print 出来
 
 ## MSRV 与平台
 
-- **Rust 1.86** 或以上。dev-dependency `reqwest 0.12` 间接依赖 `idna_adapter`
-  与 `icu_*` 系列，这些库的最新版要求 Rust 1.86。库本身只用基础 2021-edition
-  特性，老工具链下 `cargo build`（不带 dev-deps）仍可编译。
+- **Rust 1.86** 或以上。仅用于测试的 `reqwest 0.12` 依赖 `idna_adapter` 与
+  `icu_*` 系列。Cargo 的 MSRV 感知解析配置会在上游依赖提高 MSRV 时，继续选择
+  与本库声明的 Rust 版本兼容的依赖版本。
 - 主要在 Windows 10/11 上测试（CS2 的主要运行平台）。Linux 与 macOS 在监听器 / 解析器 / Steam 发现层面都支持，分别使用 `~/.steam/steam` 和 `~/Library/Application Support/Steam`。
 
 ---
