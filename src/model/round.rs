@@ -51,11 +51,13 @@ pub enum BombRoundState {
 
 /// Side that won the latest round.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "UPPERCASE")]
 pub enum WinningTeam {
     /// Counter-Terrorists.
+    #[serde(rename = "CT")]
     Ct,
     /// Terrorists.
+    #[serde(rename = "T")]
     T,
     /// No winner yet (round still in progress).
     #[serde(other)]
